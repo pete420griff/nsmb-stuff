@@ -35,10 +35,10 @@ static const StageLight newViewLightingTable[] = {
 	// 6: example - purple gradient
 	{
 		{1.0fxs,5.0fxs,-1.0fxs}, 	// light direction
-		GX_RGB(31,0,31),			// colour
-		GX_RGB(31,31,31),			// diffuse
-		GX_RGB(10,0,10),			// ambient
-		GX_RGB(0,0,25),				// emission
+		GX_RGB(31,0,31),		// colour
+		GX_RGB(31,31,31),		// diffuse
+		GX_RGB(10,0,10),		// ambient
+		GX_RGB(0,0,25),			// emission
 
 	},
 
