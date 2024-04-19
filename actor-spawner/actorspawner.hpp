@@ -23,9 +23,7 @@ public:
     	u16 particleID;	
 		s8 particleOffsetX;	
 		s8 particleOffsetY;	
-    	u16 sfxID;
-    	u8 event2;
-    	u8 event1;
+    	s32 sfxID;
 	};
 
 	void doSpawn();
