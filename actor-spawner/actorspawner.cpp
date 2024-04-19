@@ -1,3 +1,5 @@
+// Originally written by Ricbent
+
 #include "actorspawner.hpp"
 
 ncp_over(0x020399D4) static constexpr const ActorProfile* profile = &ActorSpawner::profile;
@@ -13,10 +15,10 @@ void ActorSpawner::doSpawn() {
 	u16 objID = spawnerSettings->objectID;
 
 	if (sActor) {
-		StageEntity* spawnedActor = (StageEntity*)spawnActor(objID, spawnerSettings->settings, &sPos);
+		StageEntity* spawnedActor = rcast<StageEntity*>(spawnActor(objID, spawnerSettings->settings, &sPos));
 		if (objID == 103 || objID == 185) {
 			spawnedActor->collisionSwitch |= 0x4620; // manually set spikedball collision switch lmao
-		}											 // has to be a better way of doing this
+		}						 // has to be a better way of doing this
 	}
 
 	sPos.x += spawnerSettings->particleOffsetX * 0x1000;
@@ -27,7 +29,7 @@ void ActorSpawner::doSpawn() {
 	}
 
 	if (sSFX) {
-		Sound::playSFX(spawnerSettings->sfxID, &sPos);
+		Sound::playSFXUnique(spawnerSettings->sfxID, &sPos);
 	}
 
 	actorSpawned = true;
@@ -37,10 +39,8 @@ s32 ActorSpawner::onCreate() {
 
 	actorSpawned = false;
 
-	//activeSize = Vec2(5000,5000);
-
 	spawnerSettingsID = (settings & 0xFF0000) >> 16;
-	spawnerSettings = (ActorSpawnerSettings*)(Stage::stageBlocks.objectBanks + 16 + spawnerSettingsID*16);
+	spawnerSettings = rcast<ActorSpawnerSettings*>(Stage::stageBlocks.objectBanks + 16 + spawnerSettingsID*16);
 
 	sActor = (settings & 0x4000) == 0;
 	sParticles = (settings & 0x1000) == 0;
@@ -51,9 +51,6 @@ s32 ActorSpawner::onCreate() {
 	eventWasActive = false;
 	spawnDelay = settings & 0xFFF;
 	timer = 0;
-
-	//Log() << "settings: " << Log::Hex << settings << "\n";
-	//Log() << "sfxID: " << Log::Dec << spawnerSettings->sfxID << "\n";
 
 	return 1;
 }
