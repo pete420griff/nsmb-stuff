@@ -72,11 +72,8 @@ bool ActorSpawner::updateMain() {
 		}
 
 	} else {
-		if (eventID == 0) {
-			eventActive = true;
-		}
-		else
-			eventActive = Stage::getEvent(eventID);
+		if (eventID == 0) eventActive = true;
+		else eventActive = Stage::getEvent(eventID);
 
 		if (eventWasActive && !eventActive)
 			timer = 0;
