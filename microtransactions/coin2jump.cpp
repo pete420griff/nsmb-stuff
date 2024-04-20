@@ -7,7 +7,7 @@ static u16 jumpKeyPressed;
 static u16 jumpKeyHeld;
 
 #if ALLOW_SUICIDE
-ncp_hook(0x020fd1d8,10) // suicide on Player::onUpdate if L and R held
+ncp_hook(0x020fd1d8,10) // suicide on Player::onUpdate if L and R held and player is coinless
 static void seppuku(Player* player) {
 	if ((Game::getPlayerCoins(player->playerID) == 0) && 
 		((player->keysHeld & Keys::R) != 0) &&
