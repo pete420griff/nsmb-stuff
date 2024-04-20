@@ -1,7 +1,7 @@
 #include "nsmb.hpp"
 
 #define ALLOW_SUICIDE 		true
-#define COINS_PER_STARCOIN	15
+#define COINS_PER_STARCOIN	5
 
 static u16 jumpKeyPressed;
 static u16 jumpKeyHeld;
@@ -60,12 +60,14 @@ static void loseCoinOnWallJump(Player* player) {
 		Game::playerCoins[player->playerID] -= 1;
 }
 
+#if COINS_PER_STARCOIN
 ncp_hook(0x02006868) // on StarCoin::SetCollected get 5 coins
 static void fiveCoinsOnStar() {
 	for (int i = 0; i < COINS_PER_STARCOIN; i++) {
 		Game::addPlayerCoin(Game::localPlayerID);
 	}
 }
+#endif
 
 ncp_call(0x02183700,90) // no bouncy mushroom tall jump when broke 
 static void loseCoinBounceShroom() {
