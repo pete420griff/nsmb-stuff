@@ -8,7 +8,7 @@
       <category id="3" />
       <notes></notes>
       <files></files>
-      <field id="9-16" type="value" name="Triggering ID" values="" notes="" />
+      <field id="17-24" type="value" name="Triggering ID" values="" notes="" />
       <field id="25-32" type="value" name="Settigs ID" values="" notes="Set the Settigs in the Actor Spawner Settings Dialog." />
       <field id="37-48" type="value" name="Spawn Delay" values="" notes="This Sprite can act as Actor Generator. If the specified Event is active the Actor will spawn every X frames while the Event is active. If the Event is 0 the spawning cycle begins imediatly. Measured in frames; 60 frames = 1 Second." />
       <field id="36" type="checkbox" name="Don't spawn particles" values="1" notes="" />
