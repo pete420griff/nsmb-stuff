@@ -29,8 +29,9 @@ static const StageLight newViewLightingTable[] = {
 
 	// ---------------- YOUR NEW LIGHTING ---------------- //
 	
-	// REMEMBER: 1.0fxs = 0x1000, values cannot be >= 8.0fxs or <= -8.0fxs;
-	//			 31 is max value for RGB
+	// REMEMBER: 	1.0fxs = 0x1000;
+	//		direction vector values have to be between -8.0fxs and 8.0fxs - 1;
+	//		31 is max value for RGB5, as opposed 255
 
 	// 6: example - purple gradient
 	{
