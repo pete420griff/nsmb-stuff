@@ -18,7 +18,7 @@ public:
 
 	static constexpr u16 ObjectID = 46;
 
-	static constexpr ObjectInfo ObjectInfo = {
+	static constexpr ObjectInfo objectInfo = {
 		0, 0,
 		0, 0,
 		0, 0,
@@ -28,7 +28,7 @@ public:
 
 	static constexpr u16 UpdatePriority = ObjectID;
 	static constexpr u16 RenderPriority = 0;
-	static constexpr ActorProfile Profile = {&constructObject<LightGod>, UpdatePriority, RenderPriority};
+	static constexpr ActorProfile profile = {&constructObject<LightGod>, UpdatePriority, RenderPriority};
 
 	fx32 timer;
 	fx32 lightChangeLength;

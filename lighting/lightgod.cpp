@@ -3,8 +3,8 @@
 using namespace Lighting;
 
 // replaces actor 46
-ncp_over(0x02039a34) static const ActorProfile* profile = &LightGod::Profile; 
-ncp_over(0x020c560c,0) static const ObjectInfo objectInfo = LightGod::ObjectInfo;
+ncp_over(0x02039a34) static const ActorProfile* profile = &LightGod::profile; 
+ncp_over(0x020c560c,0) static const ObjectInfo objectInfo = LightGod::objectInfo;
 
 s32 LightGod::onCreate() {
 

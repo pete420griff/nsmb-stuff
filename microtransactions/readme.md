@@ -1,5 +1,4 @@
--- NSMB WITH MICROTRANSACTIONS --
-A mod made for Jeleko a couple months back.
+# NSMB WITH MICROTRANSACTIONS
 
-With it the player can only jump with coins in their inventory.
+A mod that makes it so the player can only jump with coins in their inventory.
 A coin is lost with every jump.

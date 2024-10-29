@@ -7,7 +7,7 @@
 * **extralighting.cpp** - DO NOT modify unless you know what you are doing
 
 *OR*
-* **legacy\extralighting.cpp** - a less intrusive and possibly more safe method of adding and modifying lighting profiles\
+* **legacy/extralighting.cpp** - a less intrusive and possibly more safe method of adding and modifying lighting profiles\
 BUT, since it does nothing else but extend the game's light profile table:
 	- you can only use one directional light (DS hardware can handle four)
 	- you cannot set specular
@@ -35,8 +35,11 @@ If you wish to view LightGod's settings within NSMBe, paste this in stageobjsett
 ```
 
 ### Extras
-* **titlescreenlighting.cpp** - lets you set titlescreen lighting
 * **worldmaplighting.cpp** - lets you set worldmap lighting for each world
+* **titlescreenlighting.cpp** - lets you set titlescreen lighting
+
+
+* **tools/re.js** - a tool to visualize and create light profiles (insert link to deployed site)
 
 ---
 

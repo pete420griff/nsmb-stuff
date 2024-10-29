@@ -1,21 +1,30 @@
 #pragma once
 #include "nsmb.hpp"
 
+// symbols not yet in the code reference
+asm(R"(
+_ZN5Stage11spawnObjectEmmP4Vec3 = 0x0209c178;
+_ZN5Stage13objectIDTableE = 0x020c22b8;
+)");
+
+namespace Stage {
+	StageEntity* spawnObject(u32 objectID,u32 settings,Vec3 *position);
+	u16 objectIDTable[326];
+}
+
+
 class ActorSpawner : public StageEntity {
-	
+
 public:
 
-	virtual s32 onCreate() override;
-	virtual bool updateMain() override;
-	virtual s32 onDestroy() override;
+	struct SpawnBitfield : BitFlag<u8> {
+		bool particles 	: 1; 	//0x01
+		bool sfx 		: 1; 	//0x02
+		bool actor 		: 1; 	//0x04
+		bool firstTick 	: 1; 	//0x08
+	};
 
-	static constexpr u16 objectID = 22;
-
-	static constexpr u16 updatePriority = objectID;
-	static constexpr u16 renderPriority = objectID;
-	static constexpr ActorProfile profile = {&constructObject<ActorSpawner>, updatePriority, renderPriority};
-
-	struct ActorSpawnerSettings { 
+	struct SpawnerSettings { 
 		u16 objectID;
 		s8 offsetX;	
 		s8 offsetY;	
@@ -23,21 +32,37 @@ public:
     	u16 particleID;	
 		s8 particleOffsetX;	
 		s8 particleOffsetY;	
-    	s32 sfxID;
+    	u32 sfxID;
 	};
+
+	virtual s32 onCreate() override;
+	virtual bool updateMain() override;
+	virtual s32 onDestroy() override;
 
 	void doSpawn();
 
+	static constexpr u16 ObjectID = 22;
+
+	static constexpr ObjectInfo objectInfo = {
+		0, 16,
+		2, 2,
+		0, 0,
+		0, 0,
+		CollisionSwitch::None,
+	};
+
+	static constexpr u16 UpdatePriority = ObjectID;
+	static constexpr u16 RenderPriority = ObjectID;
+	static constexpr ActorProfile profile = {&constructObject<ActorSpawner>, UpdatePriority, RenderPriority};
+
+	SpawnerSettings* spawnerSettings;
+	s32 stageObjID;
+	u16 spawnDelay;
+	u16 timer;
+	SpawnBitfield spawnMode;
+	u8 spawnerSettingsID;
 	bool actorSpawned;
-	bool sActor;
-	bool sParticles;
-	bool sSFX;
-	bool sFirstTick;
 	bool eventActive;
 	bool eventWasActive;
 	u8 eventID;	
-	u16 spawnDelay;
-	u16 timer;
-	u16 spawnerSettingsID;
-	ActorSpawnerSettings* spawnerSettings;
 };

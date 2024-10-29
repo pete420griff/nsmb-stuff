@@ -1,90 +1,90 @@
-// Originally written by Ricbent
-
 #include "actorspawner.hpp"
 
-ncp_over(0x020399D4) static constexpr const ActorProfile* profile = &ActorSpawner::profile;
-
-void ActorSpawner::doSpawn() {
-
-	Vec3 sPos = position;
-	sPos.y -= 0x10000;		// Origin pos: Bottom-left of sprite
-
-	sPos.x += spawnerSettings->offsetX * 0x1000;
-	sPos.y += spawnerSettings->offsetY * 0x1000;
-
-	u16 objID = spawnerSettings->objectID;
-
-	if (sActor) {
-		StageEntity* spawnedActor = rcast<StageEntity*>(spawnActor(objID, spawnerSettings->settings, &sPos));
-		if (objID == 103 || objID == 185) {
-			spawnedActor->collisionSwitch |= 0x4620; // manually set spikedball collision switch lmao
-		}						 // has to be a better way of doing this
-	}
-
-	sPos.x += spawnerSettings->particleOffsetX * 0x1000;
-	sPos.y += spawnerSettings->particleOffsetY * 0x1000;
-
-	if (sParticles) {
-		Particle::Handler::createParticle(spawnerSettings->particleID, sPos);
-	}
-
-	if (sSFX) {
-		Sound::playSFXUnique(spawnerSettings->sfxID, &sPos);
-	}
-
-	actorSpawned = true;
-}
+// replaces actor 22
+ncp_over(0x020399D4) static const ActorProfile* profile = &ActorSpawner::profile;
+ncp_over(0x020c542c,0) static const ObjectInfo objectInfo = ActorSpawner::objectInfo;
 	
 s32 ActorSpawner::onCreate() {
 
-	actorSpawned = false;
+	spawnerSettingsID = settings >> 16 & 0xff;
+	spawnerSettings = rcast<SpawnerSettings*>(scast<u8*>(Stage::stageBlocks.objectBanks) + 16 + spawnerSettingsID*16);
+	
+	spawnMode |= ~(settings >> 12 & 0xf);
+	spawnDelay = settings & 0xfff;
 
-	spawnerSettingsID = (settings & 0xFF0000) >> 16;
-	spawnerSettings = rcast<ActorSpawnerSettings*>(Stage::stageBlocks.objectBanks + 16 + spawnerSettingsID*16);
-
-	sActor = (settings & 0x4000) == 0;
-	sParticles = (settings & 0x1000) == 0;
-	sSFX = (settings & 0x2000) == 0;
-	sFirstTick = (settings & 0x8000) == 0;
-
-	eventID = settings >> 24;
+	eventID = Stage::eventData[0];
 	eventWasActive = false;
-	spawnDelay = settings & 0xFFF;
+	actorSpawned = false;
 	timer = 0;
+
+	stageObjID = -1;
+	
+	for (auto i = 0; i < NTR_ARRAY_SIZE(Stage::objectIDTable); i++) {
+		if (spawnerSettings->objectID == Stage::objectIDTable[i]) {
+			stageObjID = i;
+			break;
+		}
+	}
 
 	return 1;
 }
 
+void ActorSpawner::doSpawn() {
+
+	Vec3 pos = position;
+	pos.x += spawnerSettings->offsetX * 1.0fx;
+	pos.y += spawnerSettings->offsetY * 1.0fx;
+
+	if (spawnMode.actor) {
+		u16 objID = spawnerSettings->objectID;
+		if (stageObjID == -1) {
+			Actor::spawnActor(objID, spawnerSettings->settings, &pos);
+		} else {
+			Stage::spawnObject(scast<u32>(stageObjID), spawnerSettings->settings, &pos);
+		}
+	}
+
+	pos.x += spawnerSettings->particleOffsetX * 1.0fx;
+	pos.y += spawnerSettings->particleOffsetY * 1.0fx;
+
+	if (spawnMode.particles) Particle::Handler::createParticle(spawnerSettings->particleID, pos);
+	if (spawnMode.sfx) Sound::playSFXUnique(spawnerSettings->sfxID, &pos);
+
+	actorSpawned = true;
+}
+
 bool ActorSpawner::updateMain() {
 
-	if (eventID == 0 && spawnDelay == 0)
-		return 1;
+	if (eventID == 0 && spawnDelay == 0) return true;
 
-	if (spawnDelay == 0) { // no spawn delay set
-		if (Stage::getEvent(eventID) && actorSpawned)
-			return 1;
+	if (spawnDelay == 0) {
 
-		if (!Stage::getEvent(eventID) && actorSpawned) 
+		if (Stage::getEvent(eventID) && actorSpawned) return true;
+
+		if (!Stage::getEvent(eventID) && actorSpawned) {
 			actorSpawned = false;
-
-		if (Stage::getEvent(eventID) && !actorSpawned){ 
+		} else if (Stage::getEvent(eventID) && !actorSpawned) {
 			doSpawn();
 		}
 
 	} else {
-		if (eventID == 0) eventActive = true;
-		else eventActive = Stage::getEvent(eventID);
 
-		if (eventWasActive && !eventActive)
-			timer = 0;
+		if (eventID == 0) {
+			eventActive = true;
+		} else {
+			eventActive = Stage::getEvent(eventID);
+		}
+
+		if (eventWasActive && !eventActive) timer = 0;
 
 		if (eventActive) {
-			if (sFirstTick && !eventWasActive)
+			if (spawnMode.firstTick && !eventWasActive) {
 				doSpawn();
-			if (timer > spawnDelay) {
+			} else if (timer > spawnDelay) {
 				doSpawn();
 				timer = 0;
 			}
+
 			timer++;
 		}
 
@@ -93,7 +93,7 @@ bool ActorSpawner::updateMain() {
 
 	destroyInactive(0);
 
-	return 1;
+	return true;
 }
 
 s32 ActorSpawner::onDestroy() {
