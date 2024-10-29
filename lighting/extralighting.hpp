@@ -129,7 +129,7 @@ constexpr StageLighting LightingProfiles[] = {
 	},
 
 	// 9
-	{GX_RGB(31,31,31), GX_RGB(0,0,0), GX_RGB(0,0,0), GX_RGB(31,31,31), {{0deg,-84.38deg,-118.13deg}, GX_RGB(31,12,0)},{{-90deg,-84.38deg,5.62deg}, GX_RGB(20,0,27)},{{0deg,151.87deg,-61.88deg}, GX_RGB(4,0,31)},{{78.74deg,-33.75deg,67.49deg}, GX_RGB(0,22,6)}},
+	{GX_RGB(31,31,31), GX_RGB(0,0,0), GX_RGB(0,0,0), {{0deg,-84.38deg,-118.13deg}, GX_RGB(31,12,0)},{{-90deg,-84.38deg,5.62deg}, GX_RGB(20,0,27)},{{0deg,151.87deg,-61.88deg}, GX_RGB(4,0,31)},{{78.74deg,-33.75deg,67.49deg}, GX_RGB(0,22,6)}},
 	
 	// 10: Default worldmap lighting
 	{
