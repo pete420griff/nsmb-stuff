@@ -3,7 +3,7 @@
 
 class DirLight {
   constructor(vec=createVector(),col=color(0)) {
-    //vec.y *= -1;
+    vec.y *= -1;
     this.vec = vec;
     this.col = col;
   }
@@ -16,7 +16,7 @@ class StageLighting {
     this.emi = emi;
   }
   set(setMat = true) {
-    this.dirLights.forEach(l => directionalLight(l.col, createVector(l.vec.x,l.vec.y*-1,l.vec.z)));
+    this.dirLights.forEach(l => directionalLight(l.col, l.vec));
     if (setMat) {
       ambientLight(this.amb);
       emissiveMaterial(this.emi);

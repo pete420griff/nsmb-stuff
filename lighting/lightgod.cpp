@@ -84,7 +84,7 @@ bool LightGod::changeLighting() {
 		StageLighting currentLighting = LightingProfiles[currentProfileID];
 		fx32 step = Math::div(lightChangeLength-timer, lightChangeLength);
 		lerpLighting(currentLighting, LightingProfiles[targetLightProfileID], step);
-		setGlbLightMask(LightingProfiles[currentProfileID].getLightMask());
+		setGlbLightMask(currentLighting.getLightMask());
 
 		timer -= 1.0fx;
 		return false;
