@@ -39,7 +39,7 @@ If you wish to view LightGod's settings within NSMBe, paste this in stageobjsett
 * **titlescreenlighting.cpp** - lets you set titlescreen lighting
 
 
-* **tools/re.js** - a tool to visualize and create light profiles (insert link to deployed site)
+* **tools/re.js** - [a tool to visualize and create light profiles](https://pete420griff.github.io/nsmb-stuff/)
 
 ---
 
