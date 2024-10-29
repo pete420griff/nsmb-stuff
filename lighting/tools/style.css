@@ -1,0 +1,23 @@
+html, body {
+  margin: 0;
+  padding: 0;
+}
+canvas {
+  display: block;
+}
+
+span { 
+  display:block;
+  width:240px;
+  word-wrap:break-word;
+  font-family:Papyrus;
+  font-size:0.8em;
+}
+
+button {
+  font-family:Papyrus;
+}
+
+body {
+  overflow: hidden; /* Hide scrollbars */
+}
