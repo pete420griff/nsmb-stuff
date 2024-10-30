@@ -122,7 +122,7 @@ function createDOMElements() {
   codeUI = createDiv();
   colPickers = myLighting.dirLights.map(l => createColorPicker(l.col));
   dirSliders = myLighting.dirLights.map(l => [createSlider(-1,0.99996,l.vec.z,0.00001),
-                                             createSlider(-1,0.99996,l.vec.y,0.00001),
+                                             createSlider(-0.99996,1,l.vec.y,0.00001),
                                              createSlider(-1,0.99996,l.vec.x,0.00001)]);
   
   ambPicker = createColorPicker(myLighting.amb);
