@@ -112,10 +112,6 @@ function placeDOMElements() {
     subBtn.position(numLights<4 ? 25 : 0, height - 225 - 70 * (numLights - 1));
   }
   copyCodeBtn.position(5,5);
-  if (!bitched) {bitchBtn.position(width-80,5);
-  } else {
-    bitchBtn.hide();
-  }
 }
 
 function createDOMElements() {
@@ -138,8 +134,6 @@ function createDOMElements() {
   subBtn = createButton("-").style('font-weight','bold');
   addBtn.mousePressed(addLight);
   subBtn.mousePressed(removeLight);
-  bitchBtn = createButton("Better UI");
-  bitchBtn.mousePressed(()=>{alert("fuck off"); bitched=true; bitchBtn.hide();});
   copyCodeBtn.mousePressed(()=>navigator.clipboard.writeText(getCPPCode()));
 }
 
@@ -154,7 +148,6 @@ function deleteDOMElements() {
   addBtn.remove();
   subBtn.remove();
   copyCodeBtn.remove();
-  bitchBtn.remove();
 }
 
 function resetLighting() {
@@ -191,8 +184,6 @@ function setup() {
   numPresets = lightingProfiles.length;
   
   myLighting = lightingProfiles[presetID]();
-  
-  bitched = false;
   
   createDOMElements();
   placeDOMElements();
