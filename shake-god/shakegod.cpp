@@ -1,8 +1,8 @@
 #include "shakegod.hpp"
 
 // replaces actor 255
-ncp_over(0x02039d78) static const ActorProfile* profile = &LightGod::profile; 
-ncp_over(0x020c5fd0, 0) static const ObjectInfo objectInfo = LightGod::objectInfo;
+ncp_over(0x02039d78) static const ActorProfile* profile = &ShakeGod::profile; 
+ncp_over(0x020c5fd0, 0) static const ObjectInfo objectInfo = ShakeGod::objectInfo;
 
 s32 ShakeGod::onCreate() {
 
