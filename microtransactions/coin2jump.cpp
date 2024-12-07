@@ -1,4 +1,4 @@
-#include "nsmb.hpp"
+#include <nsmb.hpp>
 
 #define ALLOW_SUICIDE 		true
 #define COINS_PER_STARCOIN	5

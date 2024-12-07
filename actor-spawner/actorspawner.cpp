@@ -47,19 +47,28 @@ void ActorSpawner::doSpawn() {
 	pos.x += spawnerSettings->particleOffsetX * 1.0fx;
 	pos.y += spawnerSettings->particleOffsetY * 1.0fx;
 
-	if (spawnMode.particles) Particle::Handler::createParticle(spawnerSettings->particleID, pos);
-	if (spawnMode.sfx) Sound::playSFXUnique(spawnerSettings->sfxID, &pos);
+	if (spawnMode.particles) {
+		Particle::Handler::createParticle(spawnerSettings->particleID, pos);
+	}
+
+	if (spawnMode.sfx) {
+		Sound::playSFXUnique(spawnerSettings->sfxID, &pos);
+	}
 
 	actorSpawned = true;
 }
 
 bool ActorSpawner::updateMain() {
 
-	if (eventID == 0 && spawnDelay == 0) return true;
+	if (eventID == 0 && spawnDelay == 0) {
+		return true;
+	}
 
 	if (spawnDelay == 0) {
 
-		if (Stage::getEvent(eventID) && actorSpawned) return true;
+		if (Stage::getEvent(eventID) && actorSpawned) {
+			return true;
+		}
 
 		if (!Stage::getEvent(eventID) && actorSpawned) {
 			actorSpawned = false;
@@ -80,7 +89,9 @@ bool ActorSpawner::updateMain() {
 		if (eventActive) {
 			if (spawnMode.firstTick && !eventWasActive) {
 				doSpawn();
-			} else if (timer > spawnDelay) {
+			}
+
+			if (timer > spawnDelay) {
 				doSpawn();
 				timer = 0;
 			}

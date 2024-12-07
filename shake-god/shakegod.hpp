@@ -1,5 +1,6 @@
 #pragma once
-#include "nsmb.hpp"
+
+#include <nsmb.hpp>
 
 class ShakeGod : public StageEntity {
 	
