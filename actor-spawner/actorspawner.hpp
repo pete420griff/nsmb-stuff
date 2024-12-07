@@ -1,17 +1,6 @@
 #pragma once
-#include "nsmb.hpp"
 
-// symbols not yet in the code reference
-asm(R"(
-_ZN5Stage11spawnObjectEmmP4Vec3 = 0x0209c178;
-_ZN5Stage13objectIDTableE = 0x020c22b8;
-)");
-
-namespace Stage {
-	StageEntity* spawnObject(u32 objectID,u32 settings,Vec3 *position);
-	u16 objectIDTable[326];
-}
-
+#include <nsmb.hpp>
 
 class ActorSpawner : public StageEntity {
 

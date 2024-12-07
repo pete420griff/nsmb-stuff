@@ -9,19 +9,19 @@ namespace Lighting {
 		Vec3 dir = Vec3(light.direction).normalize();
 		NNS_G3dGlbLightVector(lightID, dir.x, dir.y, dir.z);
 	  	NNS_G3dGlbLightColor(lightID, light.color);
-	  	(*rcast<Vec3(*)[4]>(0x020caa84))[lightID] = dir; 			// s3DLightVector
-	  	(*rcast<GXRgb(*)[4]>(0x020caa40))[lightID] = light.color; 	// sLightColor
+	  	GFX::lightVectors[lightID] = dir;
+	  	GFX::lightColors[lightID] = light.color;
 	}
 
 	void setMatLighting(const StageLighting& lighting) {
 
-		*rcast<GXRgb*>(0x020caa30) = lighting.diffuse; 	// GFX::sDiffuseColor
-		*rcast<GXRgb*>(0x020caa2c) = lighting.ambient; 	// GFX::sAmbientColor
-		*rcast<GXRgb*>(0x020caa34) = lighting.emission; // GFX::sEmissionColor
+		GFX::diffuseColor = lighting.diffuse;
+		GFX::ambientColor = lighting.ambient;
+		GFX::emissionColor = lighting.emission;
 
-		*rcast<GXRgb*>(0x020a3b20) = lighting.specular;
+		*rcast<GXRgb*>(0x020a3b20) = lighting.specular; // modifying a value in a literal pool lololol
 
-		rcast<void(*)()>(0x020a3ad8)(); // setLightColors (mat colours)
+		GFX::setMatColors();
 	}
 
 	ncp_jump(0x020a3b24,0)
@@ -63,7 +63,7 @@ static void setGlbPolyAttr(int r0, GXPolygonMode r1, GXCull r2, int r3, int r4, 
 ncp_call(0x02019984) // Model::create
 static void onModelSetup(NNSG3dRenderObj *pRenderObj,NNSG3dResMdl *pResMdl) {
 
-	rcast<void(*)(NNSG3dRenderObj*,NNSG3dResMdl*)>(0x02057dc4)(pRenderObj,pResMdl); // NNS_G3dRenderObjInit
+	NNS_G3dRenderObjInit(pRenderObj,pResMdl);
 	
 	NNS_G3dMdlUseGlbLightEnableFlag(pResMdl); // use global light mask
 
