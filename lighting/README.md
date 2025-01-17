@@ -3,8 +3,8 @@
 ![Alt Text](image.gif)
 
 ### Core files
-* **extralighting.hpp** - DO modify this; new and old lighting profiles are defined in the LightingProfiles array
-* **extralighting.cpp** - DO NOT modify unless you know what you are doing
+* **extralighting.cpp** - DO modify this; new and old lighting profiles are defined in the LightingProfiles array
+* **extralighting.hpp** - DO NOT modify unless you know what you are doing
 
 *OR*
 * **legacy/extralighting.cpp** - a less intrusive and possibly more safe method of adding and modifying lighting profiles\
