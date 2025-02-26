@@ -116,7 +116,7 @@ namespace Lighting {
 
 		*rcast<GXRgb*>(0x020a3b20) = lighting.specular; // modifying a value in a literal pool lololol
 
-		GFX::setMatColors();
+		GFX::updateGlbMaterial();
 	}
 
 	ncp_jump(0x020a3b24,0)

@@ -40,7 +40,7 @@ void ActorSpawner::doSpawn() {
 		if (stageObjID == -1) {
 			Actor::spawnActor(objID, spawnerSettings->settings, &pos);
 		} else {
-			Stage::spawnObject(scast<u32>(stageObjID), spawnerSettings->settings, &pos);
+			Stage::spawnStageObject(scast<u32>(stageObjID), spawnerSettings->settings, &pos);
 		}
 	}
 
