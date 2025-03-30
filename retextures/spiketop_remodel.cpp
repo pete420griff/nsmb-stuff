@@ -7,10 +7,10 @@
 */
 
 struct SpikeTopFiles {
-	u32 modelID;
-	u32 animID;
+	u16 modelID;
+	u16 animID;
 
-	constexpr SpikeTopFiles(u32 mdl=1642, u32 anm=1554) 
+	constexpr SpikeTopFiles(u16 mdl=1642, u16 anm=1554)
 		: modelID(mdl-131), animID(anm-131) {}
 };
 

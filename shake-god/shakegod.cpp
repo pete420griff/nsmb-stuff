@@ -43,7 +43,7 @@ bool ShakeGod::updateMain() {
 	} 
 	else if (shook && noShake) {
 		if (activateTargetEvent)
-			Stage::events |= (1ULL << (targetEvent - 1)); // Stage::setEvent(targetEvent); ...thanks ed_it
+			Stage::setEvent(targetEvent);
 		else
 			Stage::clearEvent(targetEvent);
 
