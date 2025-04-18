@@ -25,7 +25,8 @@ bool ShakeGod::updateMain() {
 	if (stopShake) {
 		bool triggered = Stage::getEvent(triggerEvent);
 
-		if (!triggered) shook = false;
+		if (!triggered)
+			shook = false;
 
 		if (!shook && (triggerEvent == 0 || triggered)) {
 			currentConfig->start = 0;
@@ -33,8 +34,10 @@ bool ShakeGod::updateMain() {
 			shook = true;
 		}
 
-		if (singleUse || !isInActiveView()) destroy(false);
-		return 1;
+		if (singleUse || !isInActiveView())
+			destroy(false);
+
+		return true;
 	}
 	
 	if (!shook && (triggerEvent == 0 || Stage::getEvent(triggerEvent)) && noShake) {
@@ -47,14 +50,16 @@ bool ShakeGod::updateMain() {
 		else
 			Stage::clearEvent(targetEvent);
 
-		if (singleUse) destroy(false);
+		if (singleUse)
+			destroy(false);
+
 		shook = false;
 	}
 
 	if (!isInActiveView())
 		destroy(false);
 
-	return 1;
+	return true;
 }
 
 

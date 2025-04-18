@@ -8,8 +8,8 @@ ncp_over(0x020c560c,0) static const ObjectInfo objectInfo = LightGod::objectInfo
 
 s32 LightGod::onCreate() {
 
-    targetLightProfileID = settings & 0xff;
-    lightChangeLength = (settings >> 8 & 0xff) * 5.0fx;
+    targetLightProfileID = getSettings().targetLightProfileID;
+    lightChangeLength = getSettings().lightChangeLength * 5.0fx;
 
 	if (lightChangeLength == 0 && (Stage::eventData[1] == 0)) {
 		if (targetLightProfileID != currentProfileID) 
@@ -19,8 +19,8 @@ s32 LightGod::onCreate() {
 
 	triggerEvent = Stage::eventData[1];
 	targetEvent = Stage::eventData[0];
-	activateTargetEvent = !(settings >> 20 & 1);
-	singleUse = settings >> 16 & 1;
+	activateTargetEvent = !getSettings().deactivateTargetEvent;
+	singleUse = getSettings().singleUse;
 
     timer = lightChangeLength;
 
@@ -34,7 +34,8 @@ s32 LightGod::onCreate() {
 
 void LightGod::lerpColor(GXRgb& color, GXRgb target, fx32 step) {
 
-	if (color == target) return;
+	if (color == target)
+		return;
 
 	u16 c[3];
 	for (u32 i=0; i<3; i++) {
@@ -51,8 +52,10 @@ void LightGod::lerpLighting(StageLighting& current, const StageLighting& target,
 		const DirLight& tLight = target.lights[i];
 		
 		if (!light.active) {
-			if (tLight.active) light.active = true;
-			else continue;			
+			if (tLight.active)
+				light.active = true;
+			else
+				continue;			
 		}		
 
 		lerpColor(light.color, tLight.color, step);
@@ -106,7 +109,7 @@ bool LightGod::updateMain() {
 			if (singleUse)
 				destroy(false);
 			if (activateTargetEvent)
-				Stage::events |= (1ULL << (targetEvent - 1)); // Stage::setEvent(targetEvent); ...thanks ed_it
+				Stage::setEvent(targetEvent);
 			else
 				Stage::clearEvent(targetEvent);
 		}
