@@ -1,5 +1,87 @@
 /* Re - a tool to for NSMB lighting creation */
 
+const nsmbVertexShader = `
+  uniform vec3 baseColor;
+  uniform vec3 ambientColor;
+  uniform vec3 emissionColor;
+  uniform vec3 specularColor;
+  
+  uniform vec3 lightDirs[4];
+  uniform vec3 lightColors[4];
+  uniform int numLights;
+
+  varying vec2 vUv;
+  varying vec3 vColor;
+
+  void main() {
+      vUv = uv;
+      
+      // Transform normal to view space
+      vec3 N = normalize(normalMatrix * normal);
+      
+      // Fixed view vector in view space (camera looks down -Z)
+      vec3 V = vec3(0.0, 0.0, -1.0); 
+
+      // Initialize base sum with emission
+      vec3 colorSum = emissionColor;
+
+      for (int i = 0; i < 4; i++) {
+          if (i >= numLights) break;
+
+          // Light direction ray in view space
+          vec3 L = normalize((viewMatrix * vec4(lightDirs[i], 0.0)).xyz);
+
+          // 1. DiffuseCalc: max[0, -L(i) . N] x DiffuseColor x LightColor(i)
+          float ld = max(0.0, dot(-L, N));
+          ld = clamp(ld, 0.0, 1.0);
+          vec3 D = (ld * lightColors[i]) * baseColor;
+
+          // 2. AmbientCalc: AmbientColor x LightColor(i)
+          vec3 A = lightColors[i] * ambientColor;
+
+          // 3. SpecularCalc: Shininess(i) x SpecularColor x LightColor(i)
+          // H = (L + V) / 2
+          vec3 H = (L + V) / 2.0;
+          float dotHN = dot(-H, N);
+          
+          // Formula: max[0, cos(2*theta)] -> cos(2*theta) = 2*cos^2(theta) - 1
+          float ls = 2.0 * dotHN * dotHN - 1.0;
+          ls = clamp(ls, 0.0, 1.0);
+          
+          vec3 S = (ls * lightColors[i]) * specularColor;
+
+          // Sum calculations
+          colorSum += D + A + S;
+      }
+
+      // Clamp VertexColor to 1.0 as per DS hardware spec
+      vColor = min(vec3(1.0), colorSum);
+
+      gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+  }
+`;
+
+const nsmbFragmentShader = `
+  uniform sampler2D map;
+  uniform bool hasTexture;
+
+  varying vec2 vUv;
+  varying vec3 vColor;
+
+  void main() {
+      vec4 texColor = vec4(1.0);
+      if (hasTexture) {
+          texColor = texture2D(map, vUv);
+          // DS basic alpha testing
+          if(texColor.a < 0.1) discard; 
+      }
+      
+      // In hardware, the sampled texture color is multiplied by the computed Vertex Color
+      gl_FragColor = vec4(texColor.rgb * vColor, texColor.a);
+  }
+`;
+
+
 const App = {
   engine: {
     scene: null,
@@ -12,9 +94,7 @@ const App = {
     modelType: "sphere",
     baseColor: null, // Holds THREE.Color for base diffuse
     autoRotate: false,
-    // Storage to keep track of dynamically imported disk models
     customModels: {},
-    // Rotation drag metrics
     isDragging: false,
     pointerPrevPosition: { x: 0, y: 0 }
   },
@@ -23,32 +103,30 @@ const App = {
     current: null,
     presetID: 0,
     presetCount: 0,
-    contextTargetID: -1, // Tracks which profile index is currently being operated on
-    modalMode: "rename",  // Tracks active modal task: "rename" or "save"
-    isCodeEditing: false // Guard flag to lock rendering feedback loop while typing
+    contextTargetID: -1, 
+    modalMode: "rename",  
+    isCodeEditing: false 
   },
 
   ui: {
     colPickers: [],
     dirSliders: [],
-    baseColPicker: null, // Custom picker for base material diffuse color
+    baseColPicker: null, 
     ambPicker: null,
     emiPicker: null,
     codeText: null,
     copyCodeBtn: null,
     addBtn: null,
     subBtn: null,
-    // Persistent profile panel controls
     menuContainer: null,
     profileButtonsContainer: null,
     profileButtons: [],
     saveBtn: null,
     modelSelect: null,
     rotateCheckbox: null,
-    baseColPickerContainer: null, // Mount container for persistent sidebar layout
+    baseColPickerContainer: null, 
     diskLoadBtn: null,
     diskFileInput: null,
-    // Context Menu & Modal Elements
     contextMenu: null,
     modalOverlay: null,
     modalTitle: null,
@@ -78,7 +156,6 @@ function createVector(x, y, z) {
   return new THREE.Vector3(x, y, z);
 }
 
-// Universal Clipboard Copy Engine
 function copyToClipboard(text) {
   if (navigator.clipboard && navigator.clipboard.writeText) {
     navigator.clipboard.writeText(text).catch(() => fallbackCopy(text));
@@ -134,7 +211,6 @@ class P5DOMWrapper {
   parent(parentWrapper) {
     if (parentWrapper && parentWrapper.element) {
       parentWrapper.element.appendChild(this.element);
-      // Flip position to relative so elements flow in order when inside parent containers
       this.element.style.position = 'relative';
       this.element.style.left = 'auto';
       this.element.style.top = 'auto';
@@ -251,46 +327,13 @@ class StageLighting {
     this.dirLights = dirLights;
     this.amb = amb || createColor(0);
     this.emi = emi || createColor(0);
-    this.threeLights = [];
   }
   
-  init() {
-    this.cleanup();
-    this.dirLights.forEach(l => {
-      const light = new THREE.DirectionalLight(l.col, 1);
-      App.engine.scene.add(light);
-      this.threeLights.push(light);
-    });
-    this.update();
-  }
-
-  update() {
-    this.dirLights.forEach((l, i) => {
-      const light = this.threeLights[i];
-      if (light) {
-        light.color.copy(l.col);
-        light.position.set(-l.vec.x, -l.vec.y, -l.vec.z).normalize().multiplyScalar(300);
-      }
-    });
-
-    if (App.engine.material) {
-      if (!window.ambientLightInstance) {
-        window.ambientLightInstance = new THREE.AmbientLight(this.amb);
-        App.engine.scene.add(window.ambientLightInstance);
-      } else {
-        window.ambientLightInstance.color.copy(this.amb);
-      }
-      App.engine.material.emissive.copy(this.emi);
-    }
-  }
-
-  cleanup() {
-    this.threeLights.forEach(l => App.engine.scene.remove(l));
-    this.threeLights = [];
-  }
+  init() {}
+  update() {}
+  cleanup() {}
 }
 
-// --- Lighting Profile Presets ---
 const purpleLighting = () => {
   const lights_ = [ new DirLight(createVector(22.5, 112.5, -22.5).divideScalar(180), createColor(31, 0, 31)) ];
   return new StageLighting(lights_, createColor(10,0,10), createColor(0,0,25));
@@ -327,7 +370,6 @@ const lightingProfiles = [
   { name: "Freaky", build: () => newLighting() }
 ];
 
-// --- Interface Data Handlers ---
 function getColorLevels31(threeColor) {
   return [
     Math.round(threeColor.r * 31),
@@ -342,8 +384,6 @@ function getCPPCode() {
   let a = getColorLevels31(App.lighting.current.amb);
   let e = getColorLevels31(App.lighting.current.emi);
   
-  // Model Base Diffuse is restored to a standardized GX_RGB(31,31,31) output
-  // ensuring visual model preview base color edits do not alter lighting exports.
   let codeStr = `{GX_RGB(31,31,31), ` +
                 `GX_RGB(${a[0]},${a[1]},${a[2]}), ` +
                 `GX_RGB(${e[0]},${e[1]},${e[2]})`;
@@ -355,7 +395,6 @@ function getCPPCode() {
   return codeStr + "},";
 }
 
-// Custom parser to map manually edited code strings back into structural parameter objects
 function parseCPPCode(codeStr) {
   const rgbRegex = /GX_RGB\s*\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*\)/g;
   const rgbMatches = [];
@@ -416,7 +455,6 @@ function updatePreviewMesh() {
     App.engine.previewMesh = mesh;
     App.engine.scene.add(App.engine.previewMesh);
   } else if (type === "mario" || type === "squigga" || App.engine.customModels[type]) {
-    // Dynamically inject the OBJLoader and MTLLoader scripts if they haven't been loaded yet
     if (typeof THREE.OBJLoader === 'undefined' || typeof THREE.MTLLoader === 'undefined') {
       if (!window.loadersPromise) {
         const loadScript = (src) => {
@@ -445,7 +483,6 @@ function updatePreviewMesh() {
 
     const isCustom = !!App.engine.customModels[type];
     
-    // Choose correct OBJ filepath and Material paths based on active type
     let folderPath = type === "mario" ? 'assets/mario/' : 'assets/squigga/';
     let mtlFileName = type === "mario" ? 'mariomodel.mtl' : 'wakaba.mtl';
     let objFileName = type === "mario" ? 'mariomodel.obj' : 'wakaba.obj';
@@ -454,113 +491,144 @@ function updatePreviewMesh() {
 
     if (isCustom) {
       const customData = App.engine.customModels[type];
-      folderPath = "";
-      mtlFileName = customData.mtlUrl;
-      objFileName = customData.objUrl;
-
-      // Feed loading manager standard custom Blob intercepter to map inner resources safely
+      
       const manager = new THREE.LoadingManager();
       manager.setURLModifier((url) => {
-        const baseName = url.split('/').pop().toLowerCase();
+        const baseName = url.split('/').pop().split('\\').pop().toLowerCase();
         if (customData.filesMap[baseName]) {
           return customData.filesMap[baseName];
         }
         return url;
       });
+
       mtlLoader = new THREE.MTLLoader(manager);
       objLoader = new THREE.OBJLoader(manager);
+
+      folderPath = "";
+      mtlFileName = customData.mtlUrl;
+      objFileName = customData.objUrl;
     }
 
     const fallbackToSphere = (err) => {
-      console.warn(`Failed to load local ${type} asset, falling back to sphere preview.`, err);
+      console.warn(`Failed to load asset, falling back to sphere preview.`, err);
       const geometry = new THREE.SphereGeometry(200, 64, 64);
       mesh = new THREE.Mesh(geometry, App.engine.material);
       App.engine.previewMesh = mesh;
       App.engine.scene.add(App.engine.previewMesh);
     };
 
-    const loadObjModel = (materialsObj) => {
-      if (materialsObj) {
-        materialsObj.preload();
-        Object.values(materialsObj.materials).forEach(material => {
-          if (material.map) {
-            material.map.flipY = false;
+    const processObjAndAdd = (obj) => {
+      // Traverse to replace internal Standard/Phong materials with our Custom Shader
+      obj.traverse((child) => {
+        if (child.isMesh) {
+          if (Array.isArray(child.material)) {
+            child.material = child.material.map(convertToNSMBMaterial);
+          } else {
+            child.material = convertToNSMBMaterial(child.material);
           }
-          material.shininess = 15;
-          material.specular = new THREE.Color(0x111111);
-          material.emissive = App.lighting.current ? App.lighting.current.emi : createColor(0);
-        });
-        objLoader.setMaterials(materialsObj);
-      }
-
-      objLoader.setPath(folderPath);
-      objLoader.load(objFileName, (obj) => {
-        // Fallback styling for non-MTL custom loaded components
-        if (!materialsObj) {
-          obj.traverse((child) => {
-            if (child.isMesh) {
-              child.material = App.engine.material;
-            }
-          });
         }
+      });
 
-        // Calculate bounding box metrics to automatically scale and center the model dynamically
-        const box = new THREE.Box3().setFromObject(obj);
-        const size = box.getSize(new THREE.Vector3());
-        const maxDim = Math.max(size.x, size.y, size.z);
-        
-        // Scale target so OBJ models fit closely to the camera viewport
-        const scale = 380 / maxDim;
-        obj.scale.set(scale, scale, scale);
+      const box = new THREE.Box3().setFromObject(obj);
+      const size = box.getSize(new THREE.Vector3());
+      const maxDim = Math.max(size.x, size.y, size.z);
+      
+      const scale = maxDim > 0 ? 380 / maxDim : 1;
+      obj.scale.set(scale, scale, scale);
 
-        const center = box.getCenter(new THREE.Vector3());
-        obj.position.sub(center.multiplyScalar(scale));
+      const center = box.getCenter(new THREE.Vector3());
+      obj.position.sub(center.multiplyScalar(scale));
 
-        App.engine.previewMesh = obj;
-        App.engine.scene.add(App.engine.previewMesh);
-      }, undefined, fallbackToSphere);
+      App.engine.previewMesh = obj;
+      App.engine.scene.add(App.engine.previewMesh);
     };
 
-    if (mtlFileName) {
-      mtlLoader.setPath(folderPath);
-      mtlLoader.load(mtlFileName, (materials) => {
-        loadObjModel(materials);
-      }, undefined, (err) => {
-        console.warn(`MTL file load failed for ${type}, attempting to load OBJ without MTL.`, err);
-        loadObjModel(null);
-      });
+    if (isCustom) {
+      const customData = App.engine.customModels[type];
+      const loadCustomAsync = async () => {
+        try {
+          const objText = await customData.objFile.text();
+          let materials = null;
+          if (customData.mtlFile) {
+            const mtlText = await customData.mtlFile.text();
+            materials = mtlLoader.parse(mtlText, "");
+            materials.preload();
+            objLoader.setMaterials(materials);
+          }
+          const obj = objLoader.parse(objText);
+          processObjAndAdd(obj);
+        } catch (e) {
+          fallbackToSphere(e);
+        }
+      };
+      loadCustomAsync();
     } else {
-      loadObjModel(null);
+      if (mtlFileName) {
+        mtlLoader.setPath(folderPath);
+        mtlLoader.load(mtlFileName, (materials) => {
+          materials.preload();
+          objLoader.setMaterials(materials);
+          objLoader.setPath(folderPath);
+          objLoader.load(objFileName, processObjAndAdd, undefined, fallbackToSphere);
+        }, undefined, (err) => {
+          console.warn(`MTL file load failed, attempting to load OBJ without MTL.`, err);
+          objLoader.setPath(folderPath);
+          objLoader.load(objFileName, processObjAndAdd, undefined, fallbackToSphere);
+        });
+      } else {
+        objLoader.setPath(folderPath);
+        objLoader.load(objFileName, processObjAndAdd, undefined, fallbackToSphere);
+      }
     }
   }
 }
 
-// Function to reactively update whatever materials are currently assigned to the active preview mesh
 function updateActiveModelMaterials() {
   if (!App.engine.previewMesh) return;
-  const emi = App.lighting.current ? App.lighting.current.emi : createColor(0);
+  
+  const currentLighting = App.lighting.current;
+  const lDirs = [new THREE.Vector3(), new THREE.Vector3(), new THREE.Vector3(), new THREE.Vector3()];
+  const lCols = [new THREE.Color(0), new THREE.Color(0), new THREE.Color(0), new THREE.Color(0)];
+  const numLights = currentLighting ? currentLighting.dirLights.length : 0;
+  
+  if (currentLighting) {
+    for(let i = 0; i < numLights; i++) {
+      lDirs[i].copy(currentLighting.dirLights[i].vec);
+      lCols[i].copy(currentLighting.dirLights[i].col);
+    }
+  }
+
+  const emi = currentLighting ? currentLighting.emi : createColor(0);
+  const amb = currentLighting ? currentLighting.amb : createColor(0);
   const baseColor = App.engine.baseColor;
+  
   const isTextured = (App.engine.modelType === "mario" || App.engine.modelType === "squigga" || App.engine.customModels[App.engine.modelType]?.hasMtl);
 
   App.engine.previewMesh.traverse((child) => {
     if (child.isMesh && child.material) {
-      // Support both single materials and arrays of materials loaded from MTL files
       const mbuf = Array.isArray(child.material) ? child.material : [child.material];
       mbuf.forEach(mat => {
-        if (mat.emissive) mat.emissive.copy(emi);
-        if (!isTextured) {
-          // Base color affects only non-textured elements
-          if (mat.color) mat.color.copy(baseColor);
-        } else {
-          // Keep textured components base diffuse color clean (un-tinted white)
-          if (mat.color) mat.color.setRGB(1, 1, 1);
+        if (mat.isShaderMaterial) {
+          mat.uniforms.ambientColor.value.copy(amb);
+          mat.uniforms.emissionColor.value.copy(emi);
+          mat.uniforms.numLights.value = numLights;
+          
+          for(let i=0; i<4; i++) {
+            mat.uniforms.lightDirs.value[i].copy(lDirs[i]);
+            mat.uniforms.lightColors.value[i].copy(lCols[i]);
+          }
+          
+          if (!isTextured || !mat.uniforms.hasTexture.value) {
+            mat.uniforms.baseColor.value.copy(baseColor);
+          } else {
+            mat.uniforms.baseColor.value.setRGB(1, 1, 1);
+          }
         }
       });
     }
   });
 }
 
-// Handler for loading custom OBJ model packages from local user disk
 function handleDiskModelUpload(files) {
   const filesMap = {};
   let objFile = null;
@@ -571,17 +639,27 @@ function handleDiskModelUpload(files) {
     const name = f.name.toLowerCase();
     const url = URL.createObjectURL(f);
     filesMap[name] = url;
+  }
 
+  for (let i = 0; i < files.length; i++) {
+    const f = files[i];
+    const name = f.name.toLowerCase();
     if (name.endsWith('.obj')) {
       objFile = f;
-    } else if (name.endsWith('.mtl')) {
-      mtlFile = f;
+      const baseName = name.slice(0, -4);
+      const possibleMtlName = baseName + ".mtl";
+      for (let j = 0; j < files.length; j++) {
+        if (files[j].name.toLowerCase() === possibleMtlName) {
+          mtlFile = files[j];
+          break;
+        }
+      }
+      break;
     }
   }
 
   if (!objFile) {
-    // Show user a custom, clean modal warning without using blocks
-    App.lighting.modalMode = "rename"; // temporary reuse
+    App.lighting.modalMode = "rename"; 
     App.ui.modalTitle.element.textContent = "Error Loading Files";
     App.ui.modalInput.element.value = "Missing .obj file in selection!";
     App.ui.modalOverlay.element.style.display = 'flex';
@@ -589,23 +667,21 @@ function handleDiskModelUpload(files) {
   }
 
   const modelId = "custom_" + Date.now();
-  const displayName = objFile.name.replace(/\.[^/.]+$/, ""); // Strip extension
+  const displayName = objFile.name.replace(/\.[^/.]+$/, ""); 
 
   App.engine.customModels[modelId] = {
     name: displayName,
-    objUrl: filesMap[objFile.name.toLowerCase()],
-    mtlUrl: mtlFile ? filesMap[mtlFile.name.toLowerCase()] : null,
+    objFile: objFile,
+    mtlFile: mtlFile,
     hasMtl: !!mtlFile,
     filesMap: filesMap
   };
 
-  // Dynamically append new loaded model option to select dropdown
   const opt = document.createElement('option');
   opt.value = modelId;
   opt.textContent = displayName + " (Disk)";
   App.ui.modelSelect.element.appendChild(opt);
 
-  // Focus and trigger active preview updates
   App.engine.modelType = modelId;
   App.ui.modelSelect.element.value = modelId;
   updatePreviewMesh();
@@ -636,7 +712,6 @@ function placeDOMElements() {
   }
   App.ui.copyCodeBtn.position(5, 5);
 
-  // Position the Right Panel
   if (App.ui.menuContainer) {
     App.ui.menuContainer.position(width - 190, 10);
   }
@@ -651,7 +726,6 @@ function createDOMElements() {
   App.ui.ambPicker = createColorPicker(App.lighting.current.amb);
   App.ui.emiPicker = createColorPicker(App.lighting.current.emi);
   
-  // Re-create sidebar Base Model Color picker inside its static layout slot wrapper
   App.ui.baseColPicker = createColorPicker(App.engine.baseColor)
     .style('width', '100%')
     .style('height', '26px')
@@ -664,7 +738,6 @@ function createDOMElements() {
     App.ui.baseColPicker.parent(App.ui.baseColPickerContainer);
   }
 
-  // Create an editable code text area with input and focus bindings
   App.ui.codeText = createTextArea(getCPPCode())
     .style('color', '#fff')
     .style('font-family', 'monospace')
@@ -687,11 +760,9 @@ function createDOMElements() {
     App.lighting.isCodeEditing = false;
   });
 
-  // Listen to live manual code inputs and parse updates dynamically
   App.ui.codeText.element.addEventListener('input', (e) => {
     const parsed = parseCPPCode(e.target.value);
     if (parsed) {
-      // Direct parse updates no longer overwrite App.engine.baseColor (preserving decoupling)
       App.lighting.current.amb = createColor(parsed.amb[0], parsed.amb[1], parsed.amb[2]);
       App.lighting.current.emi = createColor(parsed.emi[0], parsed.emi[1], parsed.emi[2]);
       
@@ -967,12 +1038,26 @@ function createSidebarPanel() {
     .style('margin', '6px 0')
     .parent(App.ui.menuContainer);
 
-  // PREVIEW MODEL SELECTION SECTION
+  const fileInputEl = document.createElement('input');
+  fileInputEl.type = 'file';
+  fileInputEl.multiple = true;
+  fileInputEl.accept = '.obj,.mtl,.png,.jpg,.jpeg';
+  fileInputEl.style.display = 'none';
+  document.body.appendChild(fileInputEl);
+  App.ui.diskFileInput = new P5DOMWrapper(fileInputEl);
+
+  App.ui.diskFileInput.element.addEventListener('change', (e) => {
+    if (e.target.files.length > 0) {
+      handleDiskModelUpload(e.target.files);
+    }
+  });
+
   createSpan("PREVIEW MODEL")
     .style('color', '#888')
     .style('font-size', '10px')
     .style('font-weight', 'bold')
     .style('letter-spacing', '1px')
+    .style('margin-top', '8px')
     .style('display', 'block')
     .parent(App.ui.menuContainer);
 
@@ -998,41 +1083,24 @@ function createSidebarPanel() {
     updatePreviewMesh();
   });
 
-  // // Disk loader trigger button inside the sidebar
-  // App.ui.diskLoadBtn = createButton("+ Load from Disk...")
-  //   .style('background', '#2d3748')
-  //   .style('color', '#e2e8f0')
-  //   .style('border', '1px dashed #4a5568')
-  //   .style('padding', '6px 10px')
-  //   .style('font-size', '11px')
-  //   .style('cursor', 'pointer')
-  //   .style('border-radius', '4px')
-  //   .style('text-align', 'center')
-  //   .mousePressed(() => {
-  //     App.ui.diskFileInput.element.click();
-  //   })
-  //   .parent(App.ui.menuContainer);
-
-  // Hidden native multi-file uploader
-  const fileInputEl = document.createElement('input');
-  fileInputEl.type = 'file';
-  fileInputEl.multiple = true;
-  fileInputEl.accept = '.obj,.mtl,.png,.jpg,.jpeg';
-  fileInputEl.style.display = 'none';
-  document.body.appendChild(fileInputEl);
-  App.ui.diskFileInput = new P5DOMWrapper(fileInputEl);
-
-  App.ui.diskFileInput.element.addEventListener('change', (e) => {
-    if (e.target.files.length > 0) {
-      handleDiskModelUpload(e.target.files);
-    }
-  });
+  App.ui.diskLoadBtn = createButton("+ Load from Disk...")
+    .style('background', '#2d3748')
+    .style('color', '#e2e8f0')
+    .style('border', '1px dashed #4a5568')
+    .style('padding', '6px 10px')
+    .style('font-size', '11px')
+    .style('cursor', 'pointer')
+    .style('border-radius', '4px')
+    .style('text-align', 'center')
+    .mousePressed(() => {
+      App.ui.diskFileInput.element.click();
+    })
+    .parent(App.ui.menuContainer);
 
   App.ui.rotateCheckbox = createCheckbox("Auto-Rotate")
     .style('margin-top', '2px')
     .parent(App.ui.menuContainer);
 
-  // Separate, custom model base color layout mounting element
   createSpan("MODEL BASE COLOR")
     .style('color', '#888')
     .style('font-size', '10px')
@@ -1175,12 +1243,10 @@ function createCustomContextMenuAndModal() {
   });
 }
 
-// Visual Swipe / Pointer Drag Orbit handlers on WebGL container
 function setupPointerOrbitControls() {
   const canvasEl = App.engine.renderer.domElement;
 
   const onPointerDown = (e) => {
-    // Only drag when interacting with canvas and not UI buttons/inputs
     if (e.target !== canvasEl) return;
     App.engine.isDragging = true;
     const x = e.touches ? e.touches[0].clientX : e.clientX;
@@ -1196,7 +1262,6 @@ function setupPointerOrbitControls() {
     const deltaX = x - App.engine.pointerPrevPosition.x;
     const deltaY = y - App.engine.pointerPrevPosition.y;
 
-    // Direct pitch-yaw offset increments on preview geometry
     App.engine.previewMesh.rotation.y += deltaX * 0.008;
     App.engine.previewMesh.rotation.x += deltaY * 0.008;
 
@@ -1207,12 +1272,10 @@ function setupPointerOrbitControls() {
     App.engine.isDragging = false;
   };
 
-  // Mouse orbits
   canvasEl.addEventListener('mousedown', onPointerDown, false);
   window.addEventListener('mousemove', onPointerMove, false);
   window.addEventListener('mouseup', onPointerUp, false);
 
-  // Touch swipes
   canvasEl.addEventListener('touchstart', onPointerDown, { passive: true });
   window.addEventListener('touchmove', onPointerMove, { passive: true });
   window.addEventListener('touchend', onPointerUp, false);
@@ -1241,7 +1304,6 @@ function resetLighting() {
   updateSidebarActiveState();
 }
 
-// Frame setup addition helper logic
 function addLight() {
   if (App.lighting.current.dirLights.length < 4) {
     deleteDOMElements();
@@ -1262,6 +1324,38 @@ function removeLight() {
   }
 }
 
+function createNSMBMaterial(map = null, color = null) {
+  const c = color ? color.clone() : new THREE.Color(1,1,1);
+  return new THREE.ShaderMaterial({
+    vertexShader: nsmbVertexShader,
+    fragmentShader: nsmbFragmentShader,
+    uniforms: {
+      baseColor: { value: c },
+      ambientColor: { value: createColor() },
+      emissionColor: { value: createColor() },
+      specularColor: { value: createColor(0.4, 0.4, 0.4) }, // Base hardware specular
+      lightDirs: { value: [createVector(), createVector(), createVector(), createVector()] },
+      lightColors: { value: [createColor(), createColor(), createColor(), createColor()] },
+      numLights: { value: 0 },
+      map: { value: map },
+      hasTexture: { value: !!map }
+    },
+    transparent: false
+  });
+}
+
+function convertToNSMBMaterial(originalMat) {
+  if (originalMat.isShaderMaterial) return originalMat;
+  const map = originalMat.map || null;
+  const color = originalMat.color || App.engine.baseColor;
+  const newMat = createNSMBMaterial(map, color);
+  
+  if (originalMat.transparent || (map && originalMat.opacity < 1)) {
+    newMat.transparent = true;
+  }
+  return newMat;
+}
+
 function setup() {
   App.engine.scene = new THREE.Scene();
 
@@ -1275,13 +1369,8 @@ function setup() {
   App.engine.renderer.setSize(App.engine.width, App.engine.height);
   document.body.appendChild(App.engine.renderer.domElement);
 
-  // Default to white base diffuse color
   App.engine.baseColor = createColor(31, 31, 31);
-  App.engine.material = new THREE.MeshPhongMaterial({ 
-    color: App.engine.baseColor,
-    shininess: 15, 
-    specular: 0x111111 
-  });
+  App.engine.material = createNSMBMaterial(null, App.engine.baseColor);
   
   updatePreviewMesh();
 
@@ -1321,7 +1410,6 @@ function draw() {
     App.ui.codeText.element.value = getCPPCode();
   }
 
-  // Handle auto-rotation of active preview mesh if not actively being dragged by user
   if (App.ui.rotateCheckbox && App.ui.rotateCheckbox.checked() && App.engine.previewMesh && !App.engine.isDragging) {
     App.engine.previewMesh.rotation.y += 0.01;
   }
