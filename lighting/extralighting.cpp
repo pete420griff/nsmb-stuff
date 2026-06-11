@@ -7,7 +7,7 @@ namespace Lighting {
 		// 0: Normal
 		{
 			GX_RGB(31,31,31), GX_RGB(6,6,6), GX_RGB(10,9,8),
-			{{0,-22.5deg,-22.5deg},GX_RGB(31,31,31)}
+			{{0deg,-22.5deg,-22.5deg},GX_RGB(31,31,31)}
 		}, 
 
 		// 1: World 8 Outside
@@ -27,13 +27,13 @@ namespace Lighting {
 			GX_RGB(31,31,31), GX_RGB(6,6,6), GX_RGB(10,9,8),
 			{{-22.5deg,-132.1875deg,-67.5deg}, GX_RGB(31,31,31)}
 		},
-		
+
 		// 4: Sunset (unused)
 		{ 
 			GX_RGB(31,31,31), GX_RGB(15,6,6), GX_RGB(19,16,0),
 			{{22.5deg,157.5deg,-90deg}, GX_RGB(31,31,31)}
 		},
-		
+
 		// 5: Underwater
 		{
 			GX_RGB(31,31,31), GX_RGB(6,6,6), GX_RGB(10,9,8),

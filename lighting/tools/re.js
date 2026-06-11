@@ -11,7 +11,12 @@ const App = {
     height: window.innerHeight,
     modelType: "sphere",
     baseColor: null, // Holds THREE.Color for base diffuse
-    autoRotate: false
+    autoRotate: false,
+    // Storage to keep track of dynamically imported disk models
+    customModels: {},
+    // Rotation drag metrics
+    isDragging: false,
+    pointerPrevPosition: { x: 0, y: 0 }
   },
 
   lighting: {
@@ -41,6 +46,8 @@ const App = {
     modelSelect: null,
     rotateCheckbox: null,
     baseColPickerContainer: null, // Mount container for persistent sidebar layout
+    diskLoadBtn: null,
+    diskFileInput: null,
     // Context Menu & Modal Elements
     contextMenu: null,
     modalOverlay: null,
@@ -408,81 +415,123 @@ function updatePreviewMesh() {
     mesh = new THREE.Mesh(geometry, App.engine.material);
     App.engine.previewMesh = mesh;
     App.engine.scene.add(App.engine.previewMesh);
-  } else if (type === "mario" || type === "squigga") {
-    // Dynamically inject the OBJLoader script if it hasn't been loaded yet
-    if (typeof THREE.OBJLoader === 'undefined') {
-      if (!window.objLoaderScriptAppended) {
-        window.objLoaderScriptAppended = true;
-        const script = document.createElement('script');
-        script.src = 'https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/OBJLoader.js';
-        script.onload = () => {
-          updatePreviewMesh();
+  } else if (type === "mario" || type === "squigga" || App.engine.customModels[type]) {
+    // Dynamically inject the OBJLoader and MTLLoader scripts if they haven't been loaded yet
+    if (typeof THREE.OBJLoader === 'undefined' || typeof THREE.MTLLoader === 'undefined') {
+      if (!window.loadersPromise) {
+        const loadScript = (src) => {
+          return new Promise((resolve, reject) => {
+            const script = document.createElement('script');
+            script.src = src;
+            script.onload = resolve;
+            script.onerror = reject;
+            document.head.appendChild(script);
+          });
         };
-        document.head.appendChild(script);
+
+        window.loadersPromise = Promise.all([
+          typeof THREE.MTLLoader === 'undefined' ? loadScript('https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/MTLLoader.js') : Promise.resolve(),
+          typeof THREE.OBJLoader === 'undefined' ? loadScript('https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/OBJLoader.js') : Promise.resolve()
+        ]);
       }
+
+      window.loadersPromise.then(() => {
+        updatePreviewMesh();
+      }).catch(err => {
+        console.error("Failed to load Three.js MTL/OBJ loaders", err);
+      });
       return;
     }
 
-    const loader = new THREE.OBJLoader();
+    const isCustom = !!App.engine.customModels[type];
     
-    // Choose correct OBJ filepath and Texture paths based on active type
-    const modelPath = type === "mario" ? 'assets/mario/mariomodel.obj' : 'assets/squigga/wakaba.obj';
-    const tex1Path = type === "mario" ? 'assets/mario/all_tx.png' : 'assets/squigga/wakaba_chan.png';
-    const tex2Path = type === "mario" ? 'assets/mario/eye_tx.png' : 'assets/squigga/wakaba_nose.png';
-    const matchingNoseOrEyeKey = type === "mario" ? "eye" : "nose";
+    // Choose correct OBJ filepath and Material paths based on active type
+    let folderPath = type === "mario" ? 'assets/mario/' : 'assets/squigga/';
+    let mtlFileName = type === "mario" ? 'mariomodel.mtl' : 'wakaba.mtl';
+    let objFileName = type === "mario" ? 'mariomodel.obj' : 'wakaba.obj';
+    let mtlLoader = new THREE.MTLLoader();
+    let objLoader = new THREE.OBJLoader();
 
-    loader.load(modelPath, (obj) => {
-      // Dynamic textures loading
-      const textureLoader = new THREE.TextureLoader();
-      const mainTex = textureLoader.load(tex1Path);
-      const secondaryTex = textureLoader.load(tex2Path);
+    if (isCustom) {
+      const customData = App.engine.customModels[type];
+      folderPath = "";
+      mtlFileName = customData.mtlUrl;
+      objFileName = customData.objUrl;
 
-      mainTex.wrapS = THREE.RepeatWrapping;
-      mainTex.wrapT = THREE.RepeatWrapping;
-      secondaryTex.wrapS = THREE.RepeatWrapping;
-      secondaryTex.wrapT = THREE.RepeatWrapping;
-
-      obj.traverse((child) => {
-        if (child.isMesh) {
-          const name = child.name.toLowerCase();
-          const matName = (child.material && child.material.name) ? child.material.name.toLowerCase() : "";
-          
-          // Check for submesh identification to apply correct sub-mesh textures
-          let map = mainTex;
-          if (name.includes(matchingNoseOrEyeKey) || matName.includes(matchingNoseOrEyeKey)) {
-            map = secondaryTex;
-          }
-
-          child.material = new THREE.MeshPhongMaterial({
-            map: map,
-            shininess: 15,
-            specular: 0x111111,
-            emissive: App.lighting.current ? App.lighting.current.emi : createColor(0)
-          });
+      // Feed loading manager standard custom Blob intercepter to map inner resources safely
+      const manager = new THREE.LoadingManager();
+      manager.setURLModifier((url) => {
+        const baseName = url.split('/').pop().toLowerCase();
+        if (customData.filesMap[baseName]) {
+          return customData.filesMap[baseName];
         }
+        return url;
       });
+      mtlLoader = new THREE.MTLLoader(manager);
+      objLoader = new THREE.OBJLoader(manager);
+    }
 
-      // Calculate bounding box metrics to automatically scale and center the model dynamically
-      const box = new THREE.Box3().setFromObject(obj);
-      const size = box.getSize(new THREE.Vector3());
-      const maxDim = Math.max(size.x, size.y, size.z);
-      
-      // Increased scaling size target from 230 to 380 so OBJ models fit closely to the camera viewport
-      const scale = 380 / maxDim;
-      obj.scale.set(scale, scale, scale);
-
-      const center = box.getCenter(new THREE.Vector3());
-      obj.position.sub(center.multiplyScalar(scale));
-
-      App.engine.previewMesh = obj;
-      App.engine.scene.add(App.engine.previewMesh);
-    }, undefined, (err) => {
-      console.warn(`Failed to load local ${type} OBJ file, falling back to sphere preview.`, err);
+    const fallbackToSphere = (err) => {
+      console.warn(`Failed to load local ${type} asset, falling back to sphere preview.`, err);
       const geometry = new THREE.SphereGeometry(200, 64, 64);
       mesh = new THREE.Mesh(geometry, App.engine.material);
       App.engine.previewMesh = mesh;
       App.engine.scene.add(App.engine.previewMesh);
-    });
+    };
+
+    const loadObjModel = (materialsObj) => {
+      if (materialsObj) {
+        materialsObj.preload();
+        Object.values(materialsObj.materials).forEach(material => {
+          if (material.map) {
+            material.map.flipY = false;
+          }
+          material.shininess = 15;
+          material.specular = new THREE.Color(0x111111);
+          material.emissive = App.lighting.current ? App.lighting.current.emi : createColor(0);
+        });
+        objLoader.setMaterials(materialsObj);
+      }
+
+      objLoader.setPath(folderPath);
+      objLoader.load(objFileName, (obj) => {
+        // Fallback styling for non-MTL custom loaded components
+        if (!materialsObj) {
+          obj.traverse((child) => {
+            if (child.isMesh) {
+              child.material = App.engine.material;
+            }
+          });
+        }
+
+        // Calculate bounding box metrics to automatically scale and center the model dynamically
+        const box = new THREE.Box3().setFromObject(obj);
+        const size = box.getSize(new THREE.Vector3());
+        const maxDim = Math.max(size.x, size.y, size.z);
+        
+        // Scale target so OBJ models fit closely to the camera viewport
+        const scale = 380 / maxDim;
+        obj.scale.set(scale, scale, scale);
+
+        const center = box.getCenter(new THREE.Vector3());
+        obj.position.sub(center.multiplyScalar(scale));
+
+        App.engine.previewMesh = obj;
+        App.engine.scene.add(App.engine.previewMesh);
+      }, undefined, fallbackToSphere);
+    };
+
+    if (mtlFileName) {
+      mtlLoader.setPath(folderPath);
+      mtlLoader.load(mtlFileName, (materials) => {
+        loadObjModel(materials);
+      }, undefined, (err) => {
+        console.warn(`MTL file load failed for ${type}, attempting to load OBJ without MTL.`, err);
+        loadObjModel(null);
+      });
+    } else {
+      loadObjModel(null);
+    }
   }
 }
 
@@ -491,20 +540,75 @@ function updateActiveModelMaterials() {
   if (!App.engine.previewMesh) return;
   const emi = App.lighting.current ? App.lighting.current.emi : createColor(0);
   const baseColor = App.engine.baseColor;
-  const isTextured = (App.engine.modelType === "mario" || App.engine.modelType === "squigga");
+  const isTextured = (App.engine.modelType === "mario" || App.engine.modelType === "squigga" || App.engine.customModels[App.engine.modelType]?.hasMtl);
 
   App.engine.previewMesh.traverse((child) => {
     if (child.isMesh && child.material) {
-      child.material.emissive.copy(emi);
-      if (!isTextured) {
-        // Base color affects only non-textured elements
-        child.material.color.copy(baseColor);
-      } else {
-        // Keep textured components base diffuse color clean (un-tinted white)
-        child.material.color.setRGB(1, 1, 1);
-      }
+      // Support both single materials and arrays of materials loaded from MTL files
+      const mbuf = Array.isArray(child.material) ? child.material : [child.material];
+      mbuf.forEach(mat => {
+        if (mat.emissive) mat.emissive.copy(emi);
+        if (!isTextured) {
+          // Base color affects only non-textured elements
+          if (mat.color) mat.color.copy(baseColor);
+        } else {
+          // Keep textured components base diffuse color clean (un-tinted white)
+          if (mat.color) mat.color.setRGB(1, 1, 1);
+        }
+      });
     }
   });
+}
+
+// Handler for loading custom OBJ model packages from local user disk
+function handleDiskModelUpload(files) {
+  const filesMap = {};
+  let objFile = null;
+  let mtlFile = null;
+
+  for (let i = 0; i < files.length; i++) {
+    const f = files[i];
+    const name = f.name.toLowerCase();
+    const url = URL.createObjectURL(f);
+    filesMap[name] = url;
+
+    if (name.endsWith('.obj')) {
+      objFile = f;
+    } else if (name.endsWith('.mtl')) {
+      mtlFile = f;
+    }
+  }
+
+  if (!objFile) {
+    // Show user a custom, clean modal warning without using blocks
+    App.lighting.modalMode = "rename"; // temporary reuse
+    App.ui.modalTitle.element.textContent = "Error Loading Files";
+    App.ui.modalInput.element.value = "Missing .obj file in selection!";
+    App.ui.modalOverlay.element.style.display = 'flex';
+    return;
+  }
+
+  const modelId = "custom_" + Date.now();
+  const displayName = objFile.name.replace(/\.[^/.]+$/, ""); // Strip extension
+
+  App.engine.customModels[modelId] = {
+    name: displayName,
+    objUrl: filesMap[objFile.name.toLowerCase()],
+    mtlUrl: mtlFile ? filesMap[mtlFile.name.toLowerCase()] : null,
+    hasMtl: !!mtlFile,
+    filesMap: filesMap
+  };
+
+  // Dynamically append new loaded model option to select dropdown
+  const opt = document.createElement('option');
+  opt.value = modelId;
+  opt.textContent = displayName + " (Disk)";
+  App.ui.modelSelect.element.appendChild(opt);
+
+  // Focus and trigger active preview updates
+  App.engine.modelType = modelId;
+  App.ui.modelSelect.element.value = modelId;
+  updatePreviewMesh();
 }
 
 function placeDOMElements() {
@@ -894,6 +998,36 @@ function createSidebarPanel() {
     updatePreviewMesh();
   });
 
+  // // Disk loader trigger button inside the sidebar
+  // App.ui.diskLoadBtn = createButton("+ Load from Disk...")
+  //   .style('background', '#2d3748')
+  //   .style('color', '#e2e8f0')
+  //   .style('border', '1px dashed #4a5568')
+  //   .style('padding', '6px 10px')
+  //   .style('font-size', '11px')
+  //   .style('cursor', 'pointer')
+  //   .style('border-radius', '4px')
+  //   .style('text-align', 'center')
+  //   .mousePressed(() => {
+  //     App.ui.diskFileInput.element.click();
+  //   })
+  //   .parent(App.ui.menuContainer);
+
+  // Hidden native multi-file uploader
+  const fileInputEl = document.createElement('input');
+  fileInputEl.type = 'file';
+  fileInputEl.multiple = true;
+  fileInputEl.accept = '.obj,.mtl,.png,.jpg,.jpeg';
+  fileInputEl.style.display = 'none';
+  document.body.appendChild(fileInputEl);
+  App.ui.diskFileInput = new P5DOMWrapper(fileInputEl);
+
+  App.ui.diskFileInput.element.addEventListener('change', (e) => {
+    if (e.target.files.length > 0) {
+      handleDiskModelUpload(e.target.files);
+    }
+  });
+
   App.ui.rotateCheckbox = createCheckbox("Auto-Rotate")
     .style('margin-top', '2px')
     .parent(App.ui.menuContainer);
@@ -1041,6 +1175,49 @@ function createCustomContextMenuAndModal() {
   });
 }
 
+// Visual Swipe / Pointer Drag Orbit handlers on WebGL container
+function setupPointerOrbitControls() {
+  const canvasEl = App.engine.renderer.domElement;
+
+  const onPointerDown = (e) => {
+    // Only drag when interacting with canvas and not UI buttons/inputs
+    if (e.target !== canvasEl) return;
+    App.engine.isDragging = true;
+    const x = e.touches ? e.touches[0].clientX : e.clientX;
+    const y = e.touches ? e.touches[0].clientY : e.clientY;
+    App.engine.pointerPrevPosition = { x, y };
+  };
+
+  const onPointerMove = (e) => {
+    if (!App.engine.isDragging || !App.engine.previewMesh) return;
+    const x = e.touches ? e.touches[0].clientX : e.clientX;
+    const y = e.touches ? e.touches[0].clientY : e.clientY;
+
+    const deltaX = x - App.engine.pointerPrevPosition.x;
+    const deltaY = y - App.engine.pointerPrevPosition.y;
+
+    // Direct pitch-yaw offset increments on preview geometry
+    App.engine.previewMesh.rotation.y += deltaX * 0.008;
+    App.engine.previewMesh.rotation.x += deltaY * 0.008;
+
+    App.engine.pointerPrevPosition = { x, y };
+  };
+
+  const onPointerUp = () => {
+    App.engine.isDragging = false;
+  };
+
+  // Mouse orbits
+  canvasEl.addEventListener('mousedown', onPointerDown, false);
+  window.addEventListener('mousemove', onPointerMove, false);
+  window.addEventListener('mouseup', onPointerUp, false);
+
+  // Touch swipes
+  canvasEl.addEventListener('touchstart', onPointerDown, { passive: true });
+  window.addEventListener('touchmove', onPointerMove, { passive: true });
+  window.addEventListener('touchend', onPointerUp, false);
+}
+
 function deleteDOMElements() {
   if (App.ui.ambPicker) App.ui.ambPicker.remove();
   if (App.ui.emiPicker) App.ui.emiPicker.remove();
@@ -1116,6 +1293,7 @@ function setup() {
   createSidebarPanel();
   createDOMElements();
   createCustomContextMenuAndModal();
+  setupPointerOrbitControls();
   placeDOMElements();
 
   window.addEventListener('resize', windowResized, false);
@@ -1143,8 +1321,8 @@ function draw() {
     App.ui.codeText.element.value = getCPPCode();
   }
 
-  // Handle auto-rotation of active preview mesh
-  if (App.ui.rotateCheckbox && App.ui.rotateCheckbox.checked() && App.engine.previewMesh) {
+  // Handle auto-rotation of active preview mesh if not actively being dragged by user
+  if (App.ui.rotateCheckbox && App.ui.rotateCheckbox.checked() && App.engine.previewMesh && !App.engine.isDragging) {
     App.engine.previewMesh.rotation.y += 0.01;
   }
 
