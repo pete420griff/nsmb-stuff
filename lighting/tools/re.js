@@ -81,6 +81,38 @@ const nsmbFragmentShader = `
   }
 `;
 
+function createNSMBMaterial(map = null, color = null) {
+  const c = color ? color.clone() : new THREE.Color(1,1,1);
+  return new THREE.ShaderMaterial({
+    vertexShader: nsmbVertexShader,
+    fragmentShader: nsmbFragmentShader,
+    uniforms: {
+      baseColor: { value: c },
+      ambientColor: { value: new THREE.Color() },
+      emissionColor: { value: new THREE.Color() },
+      specularColor: { value: new THREE.Color(0.4, 0.4, 0.4) }, // Base hardware specular
+      lightDirs: { value: [new THREE.Vector3(), new THREE.Vector3(), new THREE.Vector3(), new THREE.Vector3()] },
+      lightColors: { value: [new THREE.Color(), new THREE.Color(), new THREE.Color(), new THREE.Color()] },
+      numLights: { value: 0 },
+      map: { value: map },
+      hasTexture: { value: !!map }
+    },
+    transparent: false
+  });
+}
+
+function convertToNSMBMaterial(originalMat) {
+  if (originalMat.isShaderMaterial) return originalMat;
+  const map = originalMat.map || null;
+  const color = originalMat.color || App.engine.baseColor;
+  const newMat = createNSMBMaterial(map, color);
+  
+  if (originalMat.transparent || (map && originalMat.opacity < 1)) {
+    newMat.transparent = true;
+  }
+  return newMat;
+}
+
 
 const App = {
   engine: {
@@ -378,6 +410,7 @@ function getColorLevels31(threeColor) {
   ];
 }
 
+// CPP formatting scheme
 function getCPPCode() {
   let dv = App.lighting.current.dirLights.map(l=>createVector(l.vec.x*180, l.vec.y*180, l.vec.z*180));
   let dc = App.lighting.current.dirLights.map(l=>getColorLevels31(l.col));
@@ -455,7 +488,7 @@ function updatePreviewMesh() {
     App.engine.previewMesh = mesh;
     App.engine.scene.add(App.engine.previewMesh);
   } else if (type === "mario" || type === "squigga" || App.engine.customModels[type]) {
-    if (typeof THREE.OBJLoader === 'undefined' || typeof THREE.MTLLoader === 'undefined') {
+    if (typeof THREE.OBJLoader === 'undefined' || typeof THREE.MTLLoader === 'undefined' || typeof THREE.ColladaLoader === 'undefined') {
       if (!window.loadersPromise) {
         const loadScript = (src) => {
           return new Promise((resolve, reject) => {
@@ -469,14 +502,15 @@ function updatePreviewMesh() {
 
         window.loadersPromise = Promise.all([
           typeof THREE.MTLLoader === 'undefined' ? loadScript('https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/MTLLoader.js') : Promise.resolve(),
-          typeof THREE.OBJLoader === 'undefined' ? loadScript('https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/OBJLoader.js') : Promise.resolve()
+          typeof THREE.OBJLoader === 'undefined' ? loadScript('https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/OBJLoader.js') : Promise.resolve(),
+          typeof THREE.ColladaLoader === 'undefined' ? loadScript('https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/ColladaLoader.js') : Promise.resolve()
         ]);
       }
 
       window.loadersPromise.then(() => {
         updatePreviewMesh();
       }).catch(err => {
-        console.error("Failed to load Three.js MTL/OBJ loaders", err);
+        console.error("Failed to load Three.js MTL/OBJ/DAE loaders", err);
       });
       return;
     }
@@ -518,8 +552,11 @@ function updatePreviewMesh() {
     };
 
     const processObjAndAdd = (obj) => {
-      // Traverse to replace internal Standard/Phong materials with our Custom Shader
       obj.traverse((child) => {
+        // Strip exported lights/cameras that might interfere
+        if (child.isLight || child.isCamera) {
+          child.visible = false;
+        }
         if (child.isMesh) {
           if (Array.isArray(child.material)) {
             child.material = child.material.map(convertToNSMBMaterial);
@@ -547,16 +584,23 @@ function updatePreviewMesh() {
       const customData = App.engine.customModels[type];
       const loadCustomAsync = async () => {
         try {
-          const objText = await customData.objFile.text();
-          let materials = null;
-          if (customData.mtlFile) {
-            const mtlText = await customData.mtlFile.text();
-            materials = mtlLoader.parse(mtlText, "");
-            materials.preload();
-            objLoader.setMaterials(materials);
+          if (customData.isDae) {
+            const colladaLoader = new THREE.ColladaLoader(mtlLoader.manager); // Reuse the manager for textures
+            const daeText = await customData.daeFile.text();
+            const collada = colladaLoader.parse(daeText, "");
+            processObjAndAdd(collada.scene);
+          } else {
+            const objText = await customData.objFile.text();
+            let materials = null;
+            if (customData.mtlFile) {
+              const mtlText = await customData.mtlFile.text();
+              materials = mtlLoader.parse(mtlText, "");
+              materials.preload();
+              objLoader.setMaterials(materials);
+            }
+            const obj = objLoader.parse(objText);
+            processObjAndAdd(obj);
           }
-          const obj = objLoader.parse(objText);
-          processObjAndAdd(obj);
         } catch (e) {
           fallbackToSphere(e);
         }
@@ -602,7 +646,8 @@ function updateActiveModelMaterials() {
   const amb = currentLighting ? currentLighting.amb : createColor(0);
   const baseColor = App.engine.baseColor;
   
-  const isTextured = (App.engine.modelType === "mario" || App.engine.modelType === "squigga" || App.engine.customModels[App.engine.modelType]?.hasMtl);
+  const customModel = App.engine.customModels[App.engine.modelType];
+  const isTextured = (App.engine.modelType === "mario" || App.engine.modelType === "squigga" || customModel?.hasMtl || customModel?.isDae);
 
   App.engine.previewMesh.traverse((child) => {
     if (child.isMesh && child.material) {
@@ -633,6 +678,7 @@ function handleDiskModelUpload(files) {
   const filesMap = {};
   let objFile = null;
   let mtlFile = null;
+  let daeFile = null;
 
   for (let i = 0; i < files.length; i++) {
     const f = files[i];
@@ -655,24 +701,30 @@ function handleDiskModelUpload(files) {
         }
       }
       break;
+    } else if (name.endsWith('.dae')) {
+      daeFile = f;
+      break;
     }
   }
 
-  if (!objFile) {
+  if (!objFile && !daeFile) {
     App.lighting.modalMode = "rename"; 
     App.ui.modalTitle.element.textContent = "Error Loading Files";
-    App.ui.modalInput.element.value = "Missing .obj file in selection!";
+    App.ui.modalInput.element.value = "Missing .obj or .dae file in selection!";
     App.ui.modalOverlay.element.style.display = 'flex';
     return;
   }
 
+  const activeModelFile = objFile || daeFile;
   const modelId = "custom_" + Date.now();
-  const displayName = objFile.name.replace(/\.[^/.]+$/, ""); 
+  const displayName = activeModelFile.name.replace(/\.[^/.]+$/, ""); 
 
   App.engine.customModels[modelId] = {
     name: displayName,
     objFile: objFile,
     mtlFile: mtlFile,
+    daeFile: daeFile,
+    isDae: !!daeFile,
     hasMtl: !!mtlFile,
     filesMap: filesMap
   };
@@ -1038,20 +1090,6 @@ function createSidebarPanel() {
     .style('margin', '6px 0')
     .parent(App.ui.menuContainer);
 
-  const fileInputEl = document.createElement('input');
-  fileInputEl.type = 'file';
-  fileInputEl.multiple = true;
-  fileInputEl.accept = '.obj,.mtl,.png,.jpg,.jpeg';
-  fileInputEl.style.display = 'none';
-  document.body.appendChild(fileInputEl);
-  App.ui.diskFileInput = new P5DOMWrapper(fileInputEl);
-
-  App.ui.diskFileInput.element.addEventListener('change', (e) => {
-    if (e.target.files.length > 0) {
-      handleDiskModelUpload(e.target.files);
-    }
-  });
-
   createSpan("PREVIEW MODEL")
     .style('color', '#888')
     .style('font-size', '10px')
@@ -1097,6 +1135,20 @@ function createSidebarPanel() {
     })
     .parent(App.ui.menuContainer);
 
+  const fileInputEl = document.createElement('input');
+  fileInputEl.type = 'file';
+  fileInputEl.multiple = true;
+  fileInputEl.accept = '.obj,.mtl,.dae,.png,.jpg,.jpeg';
+  fileInputEl.style.display = 'none';
+  document.body.appendChild(fileInputEl);
+  App.ui.diskFileInput = new P5DOMWrapper(fileInputEl);
+
+  App.ui.diskFileInput.element.addEventListener('change', (e) => {
+    if (e.target.files.length > 0) {
+      handleDiskModelUpload(e.target.files);
+    }
+  });
+
   App.ui.rotateCheckbox = createCheckbox("Auto-Rotate")
     .style('margin-top', '2px')
     .parent(App.ui.menuContainer);
@@ -1120,6 +1172,7 @@ function createSidebarPanel() {
 }
 
 function createCustomContextMenuAndModal() {
+  // Context Menu Structure
   App.ui.contextMenu = createDiv()
     .style('display', 'none')
     .style('flex-direction', 'column')
@@ -1322,38 +1375,6 @@ function removeLight() {
     createDOMElements();
     placeDOMElements();
   }
-}
-
-function createNSMBMaterial(map = null, color = null) {
-  const c = color ? color.clone() : new THREE.Color(1,1,1);
-  return new THREE.ShaderMaterial({
-    vertexShader: nsmbVertexShader,
-    fragmentShader: nsmbFragmentShader,
-    uniforms: {
-      baseColor: { value: c },
-      ambientColor: { value: createColor() },
-      emissionColor: { value: createColor() },
-      specularColor: { value: createColor(0.4, 0.4, 0.4) }, // Base hardware specular
-      lightDirs: { value: [createVector(), createVector(), createVector(), createVector()] },
-      lightColors: { value: [createColor(), createColor(), createColor(), createColor()] },
-      numLights: { value: 0 },
-      map: { value: map },
-      hasTexture: { value: !!map }
-    },
-    transparent: false
-  });
-}
-
-function convertToNSMBMaterial(originalMat) {
-  if (originalMat.isShaderMaterial) return originalMat;
-  const map = originalMat.map || null;
-  const color = originalMat.color || App.engine.baseColor;
-  const newMat = createNSMBMaterial(map, color);
-  
-  if (originalMat.transparent || (map && originalMat.opacity < 1)) {
-    newMat.transparent = true;
-  }
-  return newMat;
 }
 
 function setup() {
